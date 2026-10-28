@@ -1,0 +1,49 @@
+﻿# 精简上下文版 Dockerfile（P2-14）
+#
+# 为什么要另写一份：仓库根目录有 15GB 无关内容（GPT-SoVITS、模型、音源、NapCat…），
+# 直接 build 会把它们全算进上下文。先跑 `python ops\deploy\make_build_ctx.py`
+# 组一个 26MB 的精简目录（core + ops + patches），再在那里 build。
+#
+# 用法：
+#   python ops\deploy\make_build_ctx.py            # 生成 D:\demo-build\build
+#   cd D:\demo-build\build
+#   docker build -t demo:4.29.1 .
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=utf-8 \
+    PIP_NO_CACHE_DIR=1 \
+    DASHBOARD_PORT=22877
+
+# ffmpeg：语音消息要转 wav
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 依赖 + 瘦身必须写在**同一个 RUN** 里：
+# 分成两个 RUN 的话，删掉的文件仍然留在上一层，镜像一点都不会变小。
+#   triton 是 torch 的 GPU 编译依赖（893MB），CPU 推理用不到
+COPY requirements.lock.linux /app/requirements.lock
+RUN pip install -r /app/requirements.lock \
+        -i https://pypi.tuna.tsinghua.edu.cn/simple \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+    && (pip uninstall -y triton >/dev/null 2>&1 || true) \
+    && rm -rf /usr/local/lib/python3.12/site-packages/triton* \
+    && find /usr/local/lib/python3.12/site-packages -name '__pycache__' \
+         -type d -prune -exec rm -rf {} + \
+    && find /usr/local/lib/python3.12/site-packages -name '*.pyc' -delete
+
+COPY core /app/core
+COPY patches /app/patches
+COPY ops /app/ops
+
+# 让 python 在任意工作目录都能 import astrbot（自检脚本从 /app/ops/docker 跑）
+ENV PYTHONPATH=/app/core
+
+VOLUME ["/app/core/data"]
+EXPOSE 22877 6199
+
+WORKDIR /app/core
+CMD ["python", "-u", "main.py"]

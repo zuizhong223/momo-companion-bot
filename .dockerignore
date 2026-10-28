@@ -1,0 +1,28 @@
+# 不要进镜像的东西（构建上下文越小越快）
+# —— 数据与备份
+instances/*/core/data
+backups
+restore_test
+.env
+*.zip
+ops/train/dataset.jsonl
+ops/eval/reports
+# —— 与本镜像无关的大目录（模型/音源/训练素材/语音工具链）
+GPT-SoVITS
+NapCat
+v5模型
+voice_source
+训练素材
+models
+ffmpeg
+ffmpeg_shared
+# —— 运行时产物
+instances/*/venv
+components
+**/__pycache__
+**/*.pyc
+**/*.log
+# —— 版本控制/临时
+.git
+_docker_test
+data_copy
